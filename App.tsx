@@ -1,117 +1,160 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Image,
   SafeAreaView,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  useColorScheme,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import '@tensorflow/tfjs-react-native';
+import {decodeJpeg, fetch as tsFetch} from '@tensorflow/tfjs-react-native';
+import * as tf from '@tensorflow/tfjs';
+import * as mobilenet from '@tensorflow-models/mobilenet';
+import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
+import RNFS from 'react-native-fs';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+// Image (URI) → Base64 → Buffer → Uint8Array → Tensor → model.classify(tensor) → Predictions
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
+const App: React.FC = () => {
+  const [isReady, setIsReady] = useState(false);
+  const [prediction, setPrediction] = useState<any | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
 
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+  useEffect(() => {
+    initTensorflow();
+  }, []);
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+  const initTensorflow = async () => {
+    await tf.ready();
+    console.log('FETCH ', tsFetch);
+    setIsReady(true);
+  };
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  const initMobileNetModle = async () => {
+    try {
+      const model = await mobilenet.load({
+        version: 2,
+        alpha: 1.0,
+      });
+      console.log('Model Loaded Successfully');
+      return model;
+    } catch (error) {
+      Alert.alert('Error', JSON.stringify(error));
+      return null;
+    }
+  };
+
+  const ImageToTensor = async (uri: string) => {
+    setIsLoading(true);
+    try {
+      const model = await initMobileNetModle();
+
+      if (model) {
+        const imageBase64 = await RNFS.readFile(uri, 'base64'); // Read as base64
+        const imageBuffer = Buffer.from(imageBase64, 'base64'); // Convert base64 to buffer
+        const uint8Array = new Uint8Array(imageBuffer); // Convert to Uint8Array
+        const imageTensor = decodeJpeg(uint8Array); // Convert to Tensor
+        const predictions = await model.classify(imageTensor); // Classify image tensor
+
+        setPrediction(predictions);
+        setIsLoading(false);
+        return;
+      }
+      Alert.alert('Ops!', 'Something Went Worng');
+      setIsLoading(false);
+    } catch (error) {
+      setIsLoading(false);
+      Alert.alert('Error', JSON.stringify(error));
+    }
+  };
+
+  const pickImage = async () => {
+    launchImageLibrary({mediaType: 'photo'}, response => {
+      if (response.assets) {
+        const image = response.assets[0];
+        if (image.uri) {
+          setImageUri(image.uri);
+
+          ImageToTensor(image.uri);
+        }
+      }
+    });
+  };
+
+  const openCamera = async () => {
+    launchCamera({mediaType: 'photo'}, response => {
+      if (response.assets) {
+        const image = response.assets[0];
+        if (image.uri) {
+          setImageUri(image.uri);
+          ImageToTensor(image.uri);
+        }
+      }
+    });
   };
 
   return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
+    <SafeAreaView style={styles.screen}>
+      <StatusBar barStyle={'dark-content'} backgroundColor={'white'} />
+      <Text style={styles.title}>
+        {isReady ? 'Tesorflow Ready!' : 'Loading...'}
+      </Text>
+      <TouchableOpacity style={styles.button} onPress={pickImage}>
+        <Text style={styles.buttonTitle}>pick libarary pic</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.button} onPress={openCamera}>
+        <Text style={styles.buttonTitle}>open camera</Text>
+      </TouchableOpacity>
+
+      {prediction && (
+        <View>
+          {prediction.map((item: {className: 'string'}, index: number) => {
+            return <Text key={index}>{item.className || 'none'}</Text>;
+          })}
+          <Image
+            source={{uri: imageUri as string}}
+            resizeMode={'cover'}
+            style={styles.image}
+          />
         </View>
-      </ScrollView>
+      )}
+      {isLoading && <ActivityIndicator />}
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  screen: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  sectionTitle: {
+  title: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
+  button: {
+    width: '80%',
+    height: 50,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'blue',
+    padding: 10,
+    margin: 10,
   },
-  highlight: {
-    fontWeight: '700',
+  buttonTitle: {
+    color: 'white',
+    fontSize: 16,
+  },
+  image: {
+    width: 200,
+    height: 250,
   },
 });
 
