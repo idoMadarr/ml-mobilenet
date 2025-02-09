@@ -22,8 +22,9 @@ import RNFS from 'react-native-fs';
 const App: React.FC = () => {
   const [isReady, setIsReady] = useState(false);
   const [prediction, setPrediction] = useState<any | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [model, setModel] = useState<any>(null);
 
   useEffect(() => {
     initTensorflow();
@@ -32,7 +33,9 @@ const App: React.FC = () => {
   const initTensorflow = async () => {
     await tf.ready();
     console.log('FETCH ', tsFetch);
-    setIsReady(true);
+    const model = await initMobileNetModle();
+    setModel(model);
+    setIsLoading(false);
   };
 
   const initMobileNetModle = async () => {
@@ -52,8 +55,6 @@ const App: React.FC = () => {
   const ImageToTensor = async (uri: string) => {
     setIsLoading(true);
     try {
-      const model = await initMobileNetModle();
-
       if (model) {
         const imageBase64 = await RNFS.readFile(uri, 'base64'); // Read as base64
         const imageBuffer = Buffer.from(imageBase64, 'base64'); // Convert base64 to buffer
@@ -79,7 +80,6 @@ const App: React.FC = () => {
         const image = response.assets[0];
         if (image.uri) {
           setImageUri(image.uri);
-
           ImageToTensor(image.uri);
         }
       }
@@ -101,9 +101,7 @@ const App: React.FC = () => {
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar barStyle={'dark-content'} backgroundColor={'white'} />
-      <Text style={styles.title}>
-        {isReady ? 'Tesorflow Ready!' : 'Loading...'}
-      </Text>
+      <Text style={styles.title}>{'Tesorflow!'}</Text>
       <TouchableOpacity style={styles.button} onPress={pickImage}>
         <Text style={styles.buttonTitle}>pick libarary pic</Text>
       </TouchableOpacity>
@@ -123,7 +121,11 @@ const App: React.FC = () => {
           />
         </View>
       )}
-      {isLoading && <ActivityIndicator />}
+      {isLoading && (
+        <View style={styles.spinnerContainer}>
+          <ActivityIndicator size={'large'} color={'white'} />
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -155,6 +157,14 @@ const styles = StyleSheet.create({
   image: {
     width: 200,
     height: 250,
+  },
+  spinnerContainer: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#000000aa',
   },
 });
 
